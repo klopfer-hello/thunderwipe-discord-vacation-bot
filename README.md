@@ -253,12 +253,28 @@ come back up automatically after a crash or server reboot.
 2. Make sure no local instance of the bot is running. One token can only
    be connected to Discord once at a time.
 
-### Build and start
+### Start
 
 ```bash
-docker compose up -d --build
-docker compose logs -f bot       # watch until "✅ Bot online als ..."
+docker compose up -d              # pulls the published image from GHCR
+docker compose logs -f bot        # watch until "✅ Bot online als ..."
 ```
+
+`docker-compose.yml` runs the bot from the prebuilt image
+`ghcr.io/klopfer-hello/thunderwipe-discord-vacation-bot:latest`, published
+by the release workflow on every tagged release. No local Python or build
+toolchain needed.
+
+If you want to build from source instead — for example while iterating on
+code locally — copy the override:
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d --build      # builds from this checkout
+```
+
+`docker-compose.override.yml` is gitignored, so the override only affects
+your machine.
 
 ### Useful commands
 
@@ -272,12 +288,16 @@ docker compose down                # stop + remove containers (data volume kept)
 docker compose down -v             # ⚠ also delete the database volume
 ```
 
-### Updating after code changes
+### Updating to a new release
 
 ```bash
-git pull
-docker compose up -d --build       # rebuild bot image, leave db untouched
+git pull                           # latest README / compose tweaks (if any)
+docker compose pull                # pull the newest published bot image
+docker compose up -d               # recreate only what changed
 ```
+
+When using the local-build override, swap `docker compose pull` for
+`docker compose build` (or pass `--build` to the `up` command).
 
 ### Inspecting the database
 

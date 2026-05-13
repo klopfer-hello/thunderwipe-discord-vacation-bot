@@ -493,7 +493,9 @@ services:
       retries: 5
 
   bot:
-    build: .
+    # Pulls the prebuilt image published by the release workflow.
+    # Developers can opt into a local build via docker-compose.override.yml.example.
+    image: ghcr.io/klopfer-hello/thunderwipe-discord-vacation-bot:latest
     container_name: guildbot
     restart: unless-stopped
     depends_on:
@@ -586,11 +588,12 @@ Fill in at minimum:
 
 ---
 
-### 4. Build and start everything
+### 4. Start everything
 
 ```bash
-# Build the bot image and start both containers in the background
-docker compose up -d --build
+# Pull the published bot image and start both containers in the background
+docker compose pull
+docker compose up -d
 
 # Watch the logs to confirm the bot comes online
 docker compose logs -f bot
@@ -598,13 +601,22 @@ docker compose logs -f bot
 
 You should see `✅ Bot online als ...` in the logs. Done.
 
+To build from source instead (e.g. while developing locally), copy the
+override:
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d --build
+```
+
 ---
 
-### Updating after code changes
+### Updating to a new release
 
 ```bash
 git pull
-docker compose up -d --build   # rebuilds the bot image, restarts only changed containers
+docker compose pull
+docker compose up -d   # recreates only the bot container — db stays running
 ```
 
 The `db` container is not rebuilt (it uses a pre-built image) so your data is safe.

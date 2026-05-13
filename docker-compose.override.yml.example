@@ -1,0 +1,15 @@
+# Local developer override — copy this to docker-compose.override.yml to use it.
+# (docker-compose.override.yml is gitignored.)
+#
+# By default, docker-compose.yml runs the bot from the published GHCR image.
+# This override rebuilds the bot image from the local source on every
+# `docker compose up -d --build`, so you can test code changes without
+# pushing a release first.
+#
+# Usage:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker compose up -d --build
+
+services:
+  bot:
+    build: .
