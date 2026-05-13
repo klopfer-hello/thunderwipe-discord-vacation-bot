@@ -55,12 +55,13 @@ class QueryCog(commands.Cog):
             await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         absent = await db.get_absent_on(target)
         if not absent:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Am **{format_date(target)}** ist niemand als abwesend eingetragen.",
                 ephemeral=True,
-                delete_after=EMPTY_RESULT_AUTODELETE,
             )
             return
 
@@ -69,7 +70,7 @@ class QueryCog(commands.Cog):
             for v in absent
         ]
         header = f"📋 **{len(absent)} abwesend am {format_date(target)}:**"
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "\n".join([header, *lines]), ephemeral=True
         )
 
@@ -86,15 +87,16 @@ class QueryCog(commands.Cog):
         interaction: discord.Interaction,
         tage: app_commands.Range[int, 1, 365] = 30,
     ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
         today = date.today()
         end = today + timedelta(days=tage - 1)
         vacations = await db.get_vacations_in_range(today, end)
 
         if not vacations:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Keine Urlaube in den nächsten **{tage}** Tagen eingetragen.",
                 ephemeral=True,
-                delete_after=EMPTY_RESULT_AUTODELETE,
             )
             return
 
@@ -114,9 +116,8 @@ class QueryCog(commands.Cog):
             lines.append(f"• {v.username} ({format_range(v.start_date, v.end_date)})")
 
         chunks = _chunk_lines(lines)
-        await interaction.response.send_message(chunks[0], ephemeral=True)
-        for extra in chunks[1:]:
-            await interaction.followup.send(extra, ephemeral=True)
+        for chunk in chunks:
+            await interaction.followup.send(chunk, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

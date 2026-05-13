@@ -91,12 +91,16 @@ class VacationCog(commands.Cog):
         user_id = str(interaction.user.id)
         username = interaction.user.display_name
 
+        # Defer before any DB work — Discord's 3-second interaction window can
+        # be exceeded by a cold connection pool or postgres warm-up.
+        await interaction.response.defer(ephemeral=True)
+
         existing = await db.get_vacations_overlapping_for_user(user_id, start_d, end_d)
         if existing:
             lines = "\n".join(
                 f"• {format_range(v.start_date, v.end_date)}" for v in existing
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⚠️ Du hast bereits einen überlappenden Urlaub eingetragen:\n"
                 f"{lines}\n\nBitte lösche den alten Eintrag zuerst mit `/urlaub_loeschen`.",
                 ephemeral=True,
@@ -105,11 +109,11 @@ class VacationCog(commands.Cog):
 
         await db.add_vacation(user_id, username, start_d, end_d)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Urlaub eingetragen: **{format_range(start_d, end_d)}**.",
             ephemeral=True,
-            delete_after=EPHEMERAL_AUTODELETE,
         )
+        asyncio.create_task(_delete_response_later(interaction, EPHEMERAL_AUTODELETE))
 
         # Update the pinned heatmap silently in the background.
         try:
@@ -154,6 +158,8 @@ class VacationCog(commands.Cog):
         target_id = str(mitglied.id)
         target_name = mitglied.display_name
 
+        await interaction.response.defer(ephemeral=True)
+
         existing = await db.get_vacations_overlapping_for_user(
             target_id, start_d, end_d
         )
@@ -161,7 +167,7 @@ class VacationCog(commands.Cog):
             lines = "\n".join(
                 f"• {format_range(v.start_date, v.end_date)}" for v in existing
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"⚠️ {mitglied.mention} hat bereits einen überlappenden Urlaub:\n"
                 f"{lines}\n\nBitte erst diesen Eintrag entfernen.",
                 ephemeral=True,
@@ -170,12 +176,12 @@ class VacationCog(commands.Cog):
 
         await db.add_vacation(target_id, target_name, start_d, end_d)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Urlaub für {mitglied.mention} eingetragen: "
             f"**{format_range(start_d, end_d)}**.",
             ephemeral=True,
-            delete_after=EPHEMERAL_AUTODELETE,
         )
+        asyncio.create_task(_delete_response_later(interaction, EPHEMERAL_AUTODELETE))
 
         try:
             await refresh_heatmap(self.bot, db)
@@ -189,21 +195,23 @@ class VacationCog(commands.Cog):
         description="Lösche einen deiner eingetragenen Urlaube.",
     )
     async def urlaub_loeschen(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
         user_id = str(interaction.user.id)
         vacations = await db.get_upcoming_vacations_for_user(user_id)
 
         if not vacations:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Du hast keine eingetragenen Urlaube.",
                 ephemeral=True,
-                delete_after=EPHEMERAL_AUTODELETE,
             )
+            asyncio.create_task(_delete_response_later(interaction, EPHEMERAL_AUTODELETE))
             return
 
         view = DeleteVacationView(
             bot=self.bot, owner_id=interaction.user.id, vacations=vacations
         )
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Welchen Urlaub möchtest du löschen?",
             view=view,
             ephemeral=True,
@@ -247,6 +255,9 @@ class DeleteVacationSelect(discord.ui.Select):
             )
             return
 
+        # Acknowledge before DB work to stay inside Discord's 3-second window.
+        await interaction.response.defer()
+
         # Look up the row first so we can echo the exact range back to the user.
         user_id = str(interaction.user.id)
         upcoming = await db.get_upcoming_vacations_for_user(user_id)
@@ -254,7 +265,7 @@ class DeleteVacationSelect(discord.ui.Select):
 
         deleted = await db.delete_vacation(vacation_id, user_id)
         if not deleted:
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 content="❌ Dieser Urlaub konnte nicht gefunden werden.",
                 view=None,
             )
@@ -265,11 +276,10 @@ class DeleteVacationSelect(discord.ui.Select):
             if match
             else f"#{vacation_id}"
         )
-        await interaction.response.edit_message(
+        await interaction.edit_original_response(
             content=f"✅ Urlaub vom **{label}** wurde gelöscht.",
             view=None,
         )
-        # edit_message has no `delete_after`; schedule the cleanup ourselves.
         asyncio.create_task(_delete_response_later(interaction, EPHEMERAL_AUTODELETE))
 
         # Refresh pinned heatmap silently after deletion.
