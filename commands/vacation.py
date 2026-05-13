@@ -18,6 +18,7 @@ from utils.date_parser import (
     parse_date,
     validate_range,
 )
+from utils.permissions import is_officer
 from utils.pinned_heatmap import refresh_heatmap
 
 log = logging.getLogger(__name__)
@@ -115,6 +116,71 @@ class VacationCog(commands.Cog):
             await refresh_heatmap(self.bot, db)
         except Exception:
             log.exception("refresh_heatmap failed after /urlaub")
+
+    # -------------------------------------------------------------- /urlaub_fuer
+
+    @app_commands.command(
+        name="urlaub_fuer",
+        description="Officer: Trag einen Urlaub für ein anderes Mitglied ein.",
+    )
+    @app_commands.describe(
+        mitglied="Mitglied, für das der Urlaub eingetragen wird",
+        start="Startdatum (TT.MM.JJJJ)",
+        end="Enddatum (TT.MM.JJJJ)",
+    )
+    @is_officer()
+    async def urlaub_fuer(
+        self,
+        interaction: discord.Interaction,
+        mitglied: discord.Member,
+        start: str,
+        end: str,
+    ) -> None:
+        if mitglied.bot:
+            await interaction.response.send_message(
+                "❌ Für Bots kannst du keinen Urlaub eintragen.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            start_d = parse_date(start, field="Startdatum")
+            end_d = parse_date(end, field="Enddatum")
+            validate_range(start_d, end_d)
+        except DateParseError as exc:
+            await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
+            return
+
+        target_id = str(mitglied.id)
+        target_name = mitglied.display_name
+
+        existing = await db.get_vacations_overlapping_for_user(
+            target_id, start_d, end_d
+        )
+        if existing:
+            lines = "\n".join(
+                f"• {format_range(v.start_date, v.end_date)}" for v in existing
+            )
+            await interaction.response.send_message(
+                f"⚠️ {mitglied.mention} hat bereits einen überlappenden Urlaub:\n"
+                f"{lines}\n\nBitte erst diesen Eintrag entfernen.",
+                ephemeral=True,
+            )
+            return
+
+        await db.add_vacation(target_id, target_name, start_d, end_d)
+
+        await interaction.response.send_message(
+            f"✅ Urlaub für {mitglied.mention} eingetragen: "
+            f"**{format_range(start_d, end_d)}**.",
+            ephemeral=True,
+            delete_after=EPHEMERAL_AUTODELETE,
+        )
+
+        try:
+            await refresh_heatmap(self.bot, db)
+        except Exception:
+            log.exception("refresh_heatmap failed after /urlaub_fuer")
 
     # -------------------------------------------------------------- /urlaub_loeschen
 

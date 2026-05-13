@@ -38,6 +38,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the full design spec.
 
 | Command | Parameters | Description |
 |---|---|---|
+| `/urlaub_fuer` | `mitglied`, `start`, `end` (DD.MM.JJJJ) | Register a vacation for another member (picked from a dropdown). |
 | `/fehlende` | `datum` (DD.MM.JJJJ) | List all members absent on a given date. |
 | `/urlaube_anzeigen` | `tage` (default 30) | List all vacations in the next N days. |
 
