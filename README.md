@@ -352,6 +352,22 @@ ruff check --fix .   # lint + auto-fix
 ruff format .        # format
 ```
 
+### Tests
+
+Unit tests live under [`tests/`](tests/) and cover the pure-logic modules:
+`utils/date_parser.py`, `db.py` (against a temp SQLite file), and
+`charts/heatmap.py`. Discord-side cogs aren't tested directly — they're thin
+wrappers around the tested helpers.
+
+```bash
+pip install pytest pytest-asyncio pytest-cov
+pytest                                  # all tests
+pytest tests/test_date_parser.py -v     # just one file
+pytest --cov=. --cov-report=term        # with coverage
+```
+
+The same tests run in CI via [`.github/workflows/lint.yml`](.github/workflows/lint.yml).
+
 ---
 
 ## Releasing
@@ -436,11 +452,12 @@ thunderwipe-discord-vacation-bot/
 │   ├── date_parser.py         # DD.MM.JJJJ parser + validation
 │   ├── permissions.py         # officer role check decorator
 │   └── pinned_heatmap.py      # refresh & edit the pinned heatmap message
+├── tests/                     # unit tests for date_parser, db, heatmap
 ├── requirements.txt
-├── pyproject.toml             # project metadata + ruff config
+├── pyproject.toml             # project metadata + ruff config + pytest config
 ├── .pre-commit-config.yaml    # lint & commit-message hooks
 ├── .github/workflows/
-│   ├── lint.yml               # pre-commit on push/PR
+│   ├── lint.yml               # pre-commit + pytest on push/PR
 │   └── release.yml            # build Docker image + GitHub release on v* tags
 ├── Dockerfile                 # bot image
 ├── docker-compose.yml         # bot + postgres services
