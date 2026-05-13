@@ -8,6 +8,7 @@ Environment is loaded from a `.env` file in the working directory.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -32,11 +33,15 @@ log = logging.getLogger("bot")
 COGS = ("commands.vacation", "commands.query")
 
 
+SYNC_RETRY_INTERVAL_SECONDS = 300  # retry slash command sync every 5 min on Forbidden
+
+
 class GuildVacationBot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.members = True  # needed to read role memberships
         super().__init__(command_prefix="!", intents=intents)
+        self._sync_retry_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
         await init_db()
@@ -46,9 +51,25 @@ class GuildVacationBot(commands.Bot):
             await self.load_extension(cog)
             log.info("Loaded cog: %s", cog)
 
-        # If GUILD_ID is set, sync slash commands to that guild only.
-        # Guild-scoped sync is instant; global sync can take up to an hour.
+        await self._sync_slash_commands()
+        self.daily_heatmap.start()
+
+    async def close(self) -> None:
+        self.daily_heatmap.cancel()
+        if self._sync_retry_task is not None and not self._sync_retry_task.done():
+            self._sync_retry_task.cancel()
+        await super().close()
+        await close_db()
+
+    async def _sync_slash_commands(self) -> bool:
+        """Try to register slash commands with Discord. Returns True on success.
+
+        On ``discord.Forbidden`` (bot not invited to the configured guild, or
+        missing ``applications.commands`` scope) the bot stays online and a
+        background loop retries every 5 minutes until the sync succeeds.
+        """
         guild_id_raw = os.getenv("GUILD_ID", "").strip()
+        guild: discord.Object | None = None
         if guild_id_raw:
             try:
                 guild = discord.Object(id=int(guild_id_raw))
@@ -57,23 +78,38 @@ class GuildVacationBot(commands.Bot):
                     "GUILD_ID=%r is not a valid integer; falling back to global sync",
                     guild_id_raw,
                 )
-                await self.tree.sync()
-                log.info("Slash commands synced globally (may take up to 1h to appear)")
-            else:
-                # Mirror global commands into the guild and sync there.
+                guild = None
+
+        try:
+            if guild is not None:
                 self.tree.copy_global_to(guild=guild)
                 await self.tree.sync(guild=guild)
                 log.info("Slash commands synced to guild %s (instant)", guild_id_raw)
-        else:
-            await self.tree.sync()
-            log.info("Slash commands synced globally (may take up to 1h to appear)")
+            else:
+                await self.tree.sync()
+                log.info("Slash commands synced globally (may take up to 1h to appear)")
+        except discord.Forbidden:
+            log.warning(
+                "Slash command sync rejected by Discord (Missing Access). The bot "
+                "is probably not in guild %s, or was invited without the "
+                "applications.commands scope. Retrying every %d seconds.",
+                guild_id_raw or "(global)",
+                SYNC_RETRY_INTERVAL_SECONDS,
+            )
+            if self._sync_retry_task is None or self._sync_retry_task.done():
+                self._sync_retry_task = asyncio.create_task(self._sync_retry_loop())
+            return False
+        return True
 
-        self.daily_heatmap.start()
-
-    async def close(self) -> None:
-        self.daily_heatmap.cancel()
-        await super().close()
-        await close_db()
+    async def _sync_retry_loop(self) -> None:
+        try:
+            while not self.is_closed():
+                await asyncio.sleep(SYNC_RETRY_INTERVAL_SECONDS)
+                if await self._sync_slash_commands():
+                    log.info("Slash command sync recovered after retry")
+                    return
+        except asyncio.CancelledError:
+            pass
 
     # Runs every day at 00:05 server time
     @tasks.loop(time=time(hour=0, minute=5))
