@@ -1,0 +1,34 @@
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: guildbot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: guildbot
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      POSTGRES_DB: guildvacations
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guildbot -d guildvacations"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    container_name: guildbot
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Always wins over whatever DATABASE_URL is in .env — inside the
+      # compose network the bot reaches the database via the "db" hostname.
+      DATABASE_URL: postgresql://guildbot:${DB_PASSWORD}@db:5432/guildvacations
+
+volumes:
+  postgres_data:

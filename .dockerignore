@@ -1,0 +1,39 @@
+# Secrets — never copy into the image.
+.env
+.env.local
+
+# Local virtualenv (do not bloat the build context)
+.venv/
+venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Local SQLite database (PostgreSQL is used in Docker)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS noise
+.vscode/
+.idea/
+.claude/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Markdown docs we don't need at runtime (optional)
+# Leaving CLAUDE.md / README.md in is fine but they aren't needed.

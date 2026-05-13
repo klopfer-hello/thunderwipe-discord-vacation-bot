@@ -1,0 +1,30 @@
+[project]
+name = "thunderwipe-discord-vacation-bot"
+version = "0.1.0"
+description = "Discord bot that tracks WoW guild member vacations with an auto-updating heatmap"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "matplotlib>=3.8.0",
+    "asyncpg>=0.29.0",
+    "aiosqlite>=0.20.0",
+    "Pillow>=10.0.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+src = ["."]
+extend-exclude = [".venv", "build", "dist", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # line length — handled by the formatter
+    "SIM108", # ternary — not always more readable
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

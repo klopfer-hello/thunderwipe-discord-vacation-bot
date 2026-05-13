@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase image name
+        id: img
+        shell: bash
+        run: echo "NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ steps.img.outputs.NAME }}:latest
+            ghcr.io/${{ steps.img.outputs.NAME }}:v${{ steps.version.outputs.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          # Find the previous tag (if any) so we can diff against it.
+          PREV_TAG=$(git tag --sort=-version:refname | grep '^v' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          {
+            echo "CHANGELOG<<CHANGELOG_EOF"
+
+            FEATS=$(git log "$RANGE" --pretty=format:"%s" | grep -E "^feat" | sed 's/^feat[^:]*: //' || true)
+            if [ -n "$FEATS" ]; then
+              echo "### New Features"
+              echo "$FEATS" | while read -r line; do echo "- $line"; done
+              echo ""
+            fi
+
+            FIXES=$(git log "$RANGE" --pretty=format:"%s" | grep -E "^fix" | sed 's/^fix[^:]*: //' || true)
+            if [ -n "$FIXES" ]; then
+              echo "### Bug Fixes"
+              echo "$FIXES" | while read -r line; do echo "- $line"; done
+              echo ""
+            fi
+
+            REFACTORS=$(git log "$RANGE" --pretty=format:"%s" | grep -E "^refactor" | sed 's/^refactor[^:]*: //' || true)
+            if [ -n "$REFACTORS" ]; then
+              echo "### Improvements"
+              echo "$REFACTORS" | while read -r line; do echo "- $line"; done
+              echo ""
+            fi
+
+            DOCS=$(git log "$RANGE" --pretty=format:"%s" | grep -E "^docs" | sed 's/^docs[^:]*: //' || true)
+            if [ -n "$DOCS" ]; then
+              echo "### Documentation"
+              echo "$DOCS" | while read -r line; do echo "- $line"; done
+              echo ""
+            fi
+
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
