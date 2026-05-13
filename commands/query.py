@@ -70,9 +70,7 @@ class QueryCog(commands.Cog):
             for v in absent
         ]
         header = f"📋 **{len(absent)} abwesend am {format_date(target)}:**"
-        await interaction.followup.send(
-            "\n".join([header, *lines]), ephemeral=True
-        )
+        await interaction.followup.send("\n".join([header, *lines]), ephemeral=True)
 
     # -------------------------------------------------------------- /urlaube_anzeigen
 

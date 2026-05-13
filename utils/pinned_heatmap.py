@@ -58,8 +58,11 @@ async def _reconcile_pinned_state(
         return
 
     heatmap_pins = sorted(
-        (m for m in pins
-         if m.author.id == bot_user.id and m.content.startswith(_HEATMAP_HEADER)),
+        (
+            m
+            for m in pins
+            if m.author.id == bot_user.id and m.content.startswith(_HEATMAP_HEADER)
+        ),
         key=lambda m: m.id,
         reverse=True,
     )

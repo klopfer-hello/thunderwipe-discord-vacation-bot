@@ -205,7 +205,9 @@ class VacationCog(commands.Cog):
                 "Du hast keine eingetragenen Urlaube.",
                 ephemeral=True,
             )
-            asyncio.create_task(_delete_response_later(interaction, EPHEMERAL_AUTODELETE))
+            asyncio.create_task(
+                _delete_response_later(interaction, EPHEMERAL_AUTODELETE)
+            )
             return
 
         view = DeleteVacationView(
