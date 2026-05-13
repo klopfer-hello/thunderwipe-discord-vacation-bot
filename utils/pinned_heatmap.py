@@ -39,6 +39,52 @@ async def load_pinned_message_id(db: Database) -> None:
             _pinned_message_id = None
 
 
+async def _reconcile_pinned_state(
+    channel: discord.abc.Messageable,
+    bot_user: discord.abc.User,
+    db: Database,
+) -> None:
+    """Sync our tracked pin id with the actual channel state.
+
+    Adopts a stray bot-authored heatmap pin if we don't know about one yet
+    (e.g. after a DB reset on a fresh deploy), and unpins older duplicates so
+    only a single heatmap message stays pinned.
+    """
+    global _pinned_message_id
+    try:
+        pins = await channel.pins()
+    except discord.HTTPException as exc:
+        log.warning("Could not list channel pins (%s)", exc)
+        return
+
+    heatmap_pins = sorted(
+        (m for m in pins
+         if m.author.id == bot_user.id and m.content.startswith(_HEATMAP_HEADER)),
+        key=lambda m: m.id,
+        reverse=True,
+    )
+    if not heatmap_pins:
+        return
+
+    known_ids = {m.id for m in heatmap_pins}
+    if _pinned_message_id in known_ids:
+        keep_id = _pinned_message_id
+    else:
+        keep_id = heatmap_pins[0].id
+        _pinned_message_id = keep_id
+        await db.set_config(_PINNED_MSG_KEY, str(keep_id))
+        log.info("Adopted existing pinned heatmap message %s", keep_id)
+
+    for msg in heatmap_pins:
+        if msg.id == keep_id:
+            continue
+        try:
+            await msg.unpin(reason="Removing duplicate heatmap pin")
+            log.info("Unpinned duplicate heatmap message %s", msg.id)
+        except discord.HTTPException as exc:
+            log.warning("Could not unpin duplicate %s (%s)", msg.id, exc)
+
+
 async def refresh_heatmap(bot: discord.Client, db: Database) -> None:
     """Regenerate the heatmap and edit (or create) the pinned message."""
     channel_id = _heatmap_channel_id()
@@ -52,6 +98,9 @@ async def refresh_heatmap(bot: discord.Client, db: Database) -> None:
         except discord.DiscordException:
             log.warning("HEATMAP_CHANNEL_ID=%s could not be resolved", channel_id)
             return
+
+    if bot.user is not None:
+        await _reconcile_pinned_state(channel, bot.user, db)
 
     today = date.today()
     start = today - timedelta(days=today.weekday())
