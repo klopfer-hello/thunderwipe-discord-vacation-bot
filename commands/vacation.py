@@ -18,7 +18,7 @@ from utils.date_parser import (
     parse_date,
     validate_range,
 )
-from utils.permissions import is_officer
+from utils.permissions import is_moderator
 from utils.pinned_heatmap import refresh_heatmap
 
 log = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class VacationCog(commands.Cog):
         start="Startdatum (TT.MM.JJJJ)",
         end="Enddatum (TT.MM.JJJJ)",
     )
-    @is_officer()
+    @is_moderator()
     async def urlaub_fuer(
         self,
         interaction: discord.Interaction,

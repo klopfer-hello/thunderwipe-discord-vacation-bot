@@ -72,7 +72,7 @@ Only two member-facing slash commands exist. Keep the surface area small and sim
 This is implemented with `discord.ui.View` + `discord.ui.Select`. The select options carry
 the vacation `id` as their `value` so no ID ever needs to be typed by the user.
 
-### Officer commands (requires "Officer" Discord role)
+### Moderator commands (require any role listed in `MODERATION_ROLES`)
 
 | Command | Parameters | Description |
 |---|---|---|
@@ -125,7 +125,7 @@ DB_PASSWORD=choose_a_strong_password
 DATABASE_URL=
 
 # Optional tuning
-OFFICER_ROLE_NAME=Officer          # Discord role name that gates officer commands
+MODERATION_ROLES=Officer           # Comma-separated role names that gate moderator commands
 HEATMAP_CHANNEL_ID=                # Channel ID where the pinned heatmap lives
 VACATION_CHANNEL_ID=               # If set, bot only accepts /urlaub in this channel
 ```
@@ -135,7 +135,7 @@ VACATION_CHANNEL_ID=               # If set, bot only accepts /urlaub in this ch
 DISCORD_TOKEN=
 DB_PASSWORD=
 DATABASE_URL=
-OFFICER_ROLE_NAME=Officer
+MODERATION_ROLES=Officer
 HEATMAP_CHANNEL_ID=
 VACATION_CHANNEL_ID=
 ```
@@ -204,7 +204,11 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(VacationCog(bot))
 ```
 
-### Officer-only guard
+### Moderator-only guard
+
+`MODERATION_ROLES` is a comma-separated list of role names. A member only
+needs to carry **one** of them to invoke the gated command. An empty value
+means the commands are open to everyone.
 
 ```python
 # utils/permissions.py
@@ -212,28 +216,33 @@ import os
 import discord
 from discord import app_commands
 
-OFFICER_ROLE = os.getenv("OFFICER_ROLE_NAME", "Officer")
+def moderation_roles() -> set[str]:
+    raw = os.getenv("MODERATION_ROLES", "")
+    return {part.strip() for part in raw.split(",") if part.strip()}
 
-def is_officer():
-    """app_commands check — use as decorator on officer commands."""
+def is_moderator():
+    """app_commands check — use as decorator on moderator commands."""
     async def predicate(interaction: discord.Interaction) -> bool:
-        role_names = [r.name for r in interaction.user.roles]
-        if OFFICER_ROLE not in role_names:
-            await interaction.response.send_message(
-                "❌ Du brauchst die Officer-Rolle für diesen Befehl.",
-                ephemeral=True
-            )
-            return False
-        return True
+        required = moderation_roles()
+        if not required:
+            return True  # open access
+        member_roles = {r.name for r in interaction.user.roles}
+        if member_roles & required:
+            return True
+        await interaction.response.send_message(
+            "❌ Du brauchst eine der konfigurierten Rollen für diesen Befehl.",
+            ephemeral=True,
+        )
+        return False
     return app_commands.check(predicate)
 ```
 
 Usage:
 ```python
-from utils.permissions import is_officer
+from utils.permissions import is_moderator
 
 @app_commands.command(name="fehlende")
-@is_officer()
+@is_moderator()
 async def fehlende(self, interaction, datum: str):
     ...
 ```
@@ -509,7 +518,7 @@ DB_PASSWORD=choose_a_strong_password
 # Docker Compose sets DATABASE_URL automatically — leave blank here
 DATABASE_URL=
 
-OFFICER_ROLE_NAME=Officer
+MODERATION_ROLES=Officer
 HEATMAP_CHANNEL_ID=
 VACATION_CHANNEL_ID=
 ```
@@ -573,7 +582,7 @@ Fill in at minimum:
 - `DISCORD_TOKEN` — from the Discord Developer Portal
 - `DB_PASSWORD` — choose something strong, e.g. `openssl rand -base64 24`
 - `HEATMAP_CHANNEL_ID` — the Discord channel ID for the pinned heatmap
-- `OFFICER_ROLE_NAME` — exact name of your officer role in Discord
+- `MODERATION_ROLES` — comma-separated names of the Discord roles that may use moderator commands
 
 ---
 

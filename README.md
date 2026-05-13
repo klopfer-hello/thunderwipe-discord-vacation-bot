@@ -34,7 +34,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the full design spec.
 | `/urlaub` | `start`, `end` (DD.MM.JJJJ) | Register a vacation. Reply is private (ephemeral). |
 | `/urlaub_loeschen` | — | Pick one of your own vacations from a dropdown and delete it. |
 
-**Officer commands** (require the role named in `OFFICER_ROLE_NAME`; open to everyone if that variable is empty)
+**Moderator commands** (require at least one of the roles listed in `MODERATION_ROLES`; open to everyone if that variable is empty)
 
 | Command | Parameters | Description |
 |---|---|---|
@@ -131,14 +131,16 @@ Then:
 If you want to restrict `/fehlende` and `/urlaube_anzeigen` to a subset of
 members:
 
-1. In Discord: **Server Settings → Roles → Create Role**. Name it whatever
-   you like, e.g. `Officer` or `Raidlead`. The exact name matters — it's
-   what you put in `.env`.
-2. Assign that role to the relevant guild members.
-3. In `.env` set `OFFICER_ROLE_NAME=Officer` (or whatever you named it).
+1. In Discord: **Server Settings → Roles → Create Role(s)**. Name them whatever
+   you like, e.g. `Officer`, `Raidlead`, `Admin`. The exact names matter —
+   they are what you put in `.env`.
+2. Assign those roles to the relevant guild members.
+3. In `.env` set `MODERATION_ROLES=Officer` for a single role, or
+   `MODERATION_ROLES=Officer, Raidlead, Admin` for multiple. A member needs
+   at least one of the listed roles to use the moderator commands.
 
-If you leave `OFFICER_ROLE_NAME` empty, everyone on the server can use the
-officer commands. That is the bot's default behaviour.
+If you leave `MODERATION_ROLES` empty, everyone on the server can use the
+moderator commands. That is the bot's default behaviour.
 
 ### 6. Channel-level permissions for the heatmap channel
 
@@ -176,7 +178,7 @@ All values live in a `.env` file at the project root. Copy `.env.example` to
 | `DISCORD_TOKEN` | **yes** | Bot token from the developer portal (step 1). |
 | `GUILD_ID` | recommended | Discord server ID (step 4). With it, slash commands appear **instantly** on that server. Without it, they sync globally and may take up to an hour. |
 | `HEATMAP_CHANNEL_ID` | recommended | Channel for the pinned heatmap (step 4). If unset, the heatmap is disabled. |
-| `OFFICER_ROLE_NAME` | — | Role name for officer commands (step 5). **Empty/unset = open to everyone.** |
+| `MODERATION_ROLES` | — | Comma-separated role names that gate the moderator commands (step 5). A member needs **any one** of them. **Empty/unset = open to everyone.** |
 | `VACATION_CHANNEL_ID` | — | If set, `/urlaub` is only allowed in that channel. |
 | `DB_PASSWORD` | docker only | PostgreSQL password used by `docker-compose.yml`. Ignored when running locally. |
 | `DATABASE_URL` | — | If set, the bot uses PostgreSQL via this URL. If unset, falls back to local SQLite (`vacations.db`). Compose sets this automatically — leave it empty in `.env`. |
@@ -242,7 +244,7 @@ come back up automatically after a crash or server reboot.
    - `DB_PASSWORD` — pick a strong value (`openssl rand -base64 24` or similar)
    - `GUILD_ID` — your server ID (recommended; instant slash sync)
    - `HEATMAP_CHANNEL_ID` — the channel that holds the pinned heatmap
-   - `OFFICER_ROLE_NAME` — role name, or leave empty for open access
+   - `MODERATION_ROLES` — comma-separated role names, or leave empty for open access
 
    > When running under Docker Compose, `DATABASE_URL` is set automatically
    > by the compose file to point at the `db` container. Leave that variable
@@ -428,9 +430,10 @@ channel has a permission override that needs the bot's role added with
 correct channel ID and that the bot can see (i.e. has `View Channel` in)
 that channel. Without that, the bot can't post anything.
 
-**`/urlaub` fails with "Du brauchst die Rolle …".** The user lacks the role
-named in `OFFICER_ROLE_NAME`. Either give them the role, or unset
-`OFFICER_ROLE_NAME` to open the commands to everyone, then restart the bot.
+**A moderator command fails with "Du brauchst die Rolle …".** The user lacks
+every role listed in `MODERATION_ROLES`. Either give them one of those roles,
+add their role to the list, or unset `MODERATION_ROLES` to open the commands
+to everyone, then restart the bot.
 
 **Two bots online at once / `Session start limit exceeded`.** You probably
 have a local `python bot.py` running and started Docker (or vice versa).

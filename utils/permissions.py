@@ -1,4 +1,4 @@
-"""Officer role guard for slash commands."""
+"""Moderation role guard for slash commands."""
 
 from __future__ import annotations
 
@@ -8,33 +8,47 @@ import discord
 from discord import app_commands
 
 
-def officer_role_name() -> str:
-    """The name of the role that gates officer commands, or empty string for open access."""
-    return os.getenv("OFFICER_ROLE_NAME", "").strip()
+def moderation_roles() -> set[str]:
+    """The set of role names that gate moderator commands.
+
+    Configured via the ``MODERATION_ROLES`` environment variable — a
+    comma-separated list of Discord role names. An empty value (or missing
+    variable) means the commands are open to everyone.
+    """
+    raw = os.getenv("MODERATION_ROLES", "")
+    return {part.strip() for part in raw.split(",") if part.strip()}
 
 
-def is_officer():
-    """Decorator: gate a command behind the officer role.
+def _format_required_roles(roles: set[str]) -> str:
+    ordered = sorted(roles)
+    if len(ordered) == 1:
+        return f"die Rolle „{ordered[0]}“"
+    quoted = ", ".join(f"„{r}“" for r in ordered)
+    return f"eine der folgenden Rollen: {quoted}"
+
+
+def is_moderator():
+    """Decorator: gate a command behind any of the configured moderator roles.
 
     Behaviour:
-        * ``OFFICER_ROLE_NAME`` empty/unset -> the command is open to everyone.
-        * ``OFFICER_ROLE_NAME`` set -> only members carrying that exact role
-          name may invoke the command; others get a friendly German rejection.
+        * ``MODERATION_ROLES`` empty/unset -> the command is open to everyone.
+        * ``MODERATION_ROLES`` set -> the invoking member must carry at least
+          one of the listed roles; others get a friendly German rejection.
     """
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        role = officer_role_name()
-        if not role:
-            return True  # open access — no officer role configured
+        required = moderation_roles()
+        if not required:
+            return True  # open access — no moderator role configured
 
         member = interaction.user
-        role_names = {r.name for r in getattr(member, "roles", [])}
-        if role in role_names:
+        member_role_names = {r.name for r in getattr(member, "roles", [])}
+        if member_role_names & required:
             return True
 
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                f"❌ Du brauchst die Rolle „{role}“ für diesen Befehl.",
+                f"❌ Du brauchst {_format_required_roles(required)} für diesen Befehl.",
                 ephemeral=True,
             )
         return False

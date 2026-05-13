@@ -1,4 +1,4 @@
-"""Officer-only query commands."""
+"""Moderator-only query commands."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from discord.ext import commands
 
 from db import db
 from utils.date_parser import DateParseError, format_date, format_range, parse_date
-from utils.permissions import is_officer
+from utils.permissions import is_moderator
 
 # How long "no entries" responses stay before vanishing. Data results stay
 # until the user dismisses them, since they may want to scroll/refer back.
@@ -47,7 +47,7 @@ class QueryCog(commands.Cog):
         description="Officer: Wer ist an einem bestimmten Tag abwesend?",
     )
     @app_commands.describe(datum="Datum (TT.MM.JJJJ)")
-    @is_officer()
+    @is_moderator()
     async def fehlende(self, interaction: discord.Interaction, datum: str) -> None:
         try:
             target = parse_date(datum, field="Datum")
@@ -81,7 +81,7 @@ class QueryCog(commands.Cog):
         description="Officer: Alle Urlaube in den nächsten N Tagen anzeigen.",
     )
     @app_commands.describe(tage="Wie viele Tage in die Zukunft (Standard: 30)")
-    @is_officer()
+    @is_moderator()
     async def urlaube_anzeigen(
         self,
         interaction: discord.Interaction,
