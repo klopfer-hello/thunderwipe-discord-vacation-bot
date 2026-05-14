@@ -66,12 +66,12 @@ _WEEKDAY_LABELS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 # readable; a soft black outline (via path_effects) handles the lighter shades.
 BUCKET_BOUNDARIES = [0, 5, 10, 15, 20, 25, float("inf")]
 BUCKET_COLORS = [
-    GROUP_BG,            # 0-4
-    _rgb(60, 95, 65),    # 5-9
+    GROUP_BG,  # 0-4
+    _rgb(60, 95, 65),  # 5-9
     _rgb(125, 100, 35),  # 10-14
-    _rgb(170, 90, 35),   # 15-19
-    _rgb(170, 50, 50),   # 20-24
-    _rgb(115, 25, 40),   # 25+
+    _rgb(170, 90, 35),  # 15-19
+    _rgb(170, 50, 50),  # 20-24
+    _rgb(115, 25, 40),  # 25+
 ]
 _CMAP = ListedColormap(BUCKET_COLORS, name="absence_buckets")
 _NORM = BoundaryNorm(BUCKET_BOUNDARIES, _CMAP.N)
@@ -118,7 +118,7 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
         zorder=1,
     )
 
-    # Per-cell decoration: weekend dimming, today highlight, date label, count.
+    # Per-cell decoration: today highlight, date label, count.
     for r in range(WEEKS):
         for c in range(DAYS_PER_WEEK):
             day = days_grid[r, c]

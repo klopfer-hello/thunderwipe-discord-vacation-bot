@@ -20,9 +20,7 @@ log = logging.getLogger(__name__)
 EMPTY_RESULT_AUTODELETE = 10.0
 
 
-async def _resolve_member_name(
-    guild: discord.Guild | None, vacation: Vacation
-) -> str:
+async def _resolve_member_name(guild: discord.Guild | None, vacation: Vacation) -> str:
     """Return the member's current display_name, refreshing the DB if stale.
 
     Discord allows members to change their username, global display name, or
