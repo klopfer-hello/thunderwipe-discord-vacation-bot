@@ -5,6 +5,7 @@ services:
     container_name: guildbot-db
     restart: unless-stopped
     environment:
+      TZ: Europe/Berlin
       POSTGRES_USER: guildbot
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
       POSTGRES_DB: guildvacations
@@ -26,6 +27,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Europe/Berlin
       # Always wins over whatever DATABASE_URL is in .env — inside the
       # compose network the bot reaches the database via the "db" hostname.
       DATABASE_URL: postgresql://guildbot:${DB_PASSWORD}@db:5432/guildvacations
