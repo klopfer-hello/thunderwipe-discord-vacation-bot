@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 from datetime import time
+from pathlib import Path
 
 import discord
 from discord.ext import commands, tasks
@@ -35,6 +36,10 @@ COGS = ("commands.vacation", "commands.query")
 
 SYNC_RETRY_INTERVAL_SECONDS = 300  # retry slash command sync every 5 min on Forbidden
 
+# Touched by the heartbeat loop; the Docker healthcheck fails if its mtime
+# falls behind, which only happens when the bot is disconnected from Discord.
+HEARTBEAT_PATH = Path("/tmp/bot_alive")
+
 
 class GuildVacationBot(commands.Bot):
     def __init__(self) -> None:
@@ -53,8 +58,10 @@ class GuildVacationBot(commands.Bot):
 
         await self._sync_slash_commands()
         self.daily_heatmap.start()
+        self.heartbeat.start()
 
     async def close(self) -> None:
+        self.heartbeat.cancel()
         self.daily_heatmap.cancel()
         if self._sync_retry_task is not None and not self._sync_retry_task.done():
             self._sync_retry_task.cancel()
@@ -122,6 +129,15 @@ class GuildVacationBot(commands.Bot):
 
     @daily_heatmap.before_loop
     async def _wait_until_ready(self) -> None:
+        await self.wait_until_ready()
+
+    @tasks.loop(seconds=30)
+    async def heartbeat(self) -> None:
+        if self.is_ready():
+            HEARTBEAT_PATH.touch()
+
+    @heartbeat.before_loop
+    async def _wait_until_ready_for_heartbeat(self) -> None:
         await self.wait_until_ready()
 
 
