@@ -2,19 +2,55 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from db import db
+from db import Vacation, db
 from utils.date_parser import DateParseError, format_date, format_range, parse_date
 from utils.permissions import is_moderator
+
+log = logging.getLogger(__name__)
 
 # How long "no entries" responses stay before vanishing. Data results stay
 # until the user dismisses them, since they may want to scroll/refer back.
 EMPTY_RESULT_AUTODELETE = 10.0
+
+
+async def _resolve_member_name(
+    guild: discord.Guild | None, vacation: Vacation
+) -> str:
+    """Return the member's current display_name, refreshing the DB if stale.
+
+    Discord allows members to change their username, global display name, or
+    per-guild nickname at any time. We snapshotted ``display_name`` at the
+    moment of ``/urlaub``, so without this lookup officer queries would show
+    the stale text. Lookup is cache-only (no API roundtrip); the bot is
+    configured with ``Intents.members`` so the cache is warm.
+
+    Side-effect: if the live display_name differs from what's in the DB,
+    every row for this user_id is updated so subsequent queries don't have
+    to refresh again.
+    """
+    if guild is None:
+        return vacation.username
+    member = guild.get_member(int(vacation.user_id))
+    if member is None:
+        # Member has left the guild (or isn't cached); keep the last name we
+        # know to avoid showing a bare user_id in the output.
+        return vacation.username
+    current = member.display_name
+    if current != vacation.username:
+        try:
+            await db.update_username_for_user(vacation.user_id, current)
+        except Exception:
+            # Failing to persist isn't fatal — we still want to display
+            # the current name to the requesting officer.
+            log.exception("Failed to refresh username for user_id=%s", vacation.user_id)
+    return current
 
 
 def _chunk_lines(lines: list[str], max_chars: int = 1900) -> list[str]:
@@ -66,7 +102,8 @@ class QueryCog(commands.Cog):
             return
 
         lines = [
-            f"• **{v.username}** ({format_range(v.start_date, v.end_date)})"
+            f"• **{await _resolve_member_name(interaction.guild, v)}** "
+            f"({format_range(v.start_date, v.end_date)})"
             for v in absent
         ]
         header = f"📋 **{len(absent)} abwesend am {format_date(target)}:**"
@@ -111,7 +148,8 @@ class QueryCog(commands.Cog):
                     lines.append("")
                 lines.append(f"**{format_date(v.start_date)}**")
                 current_start = v.start_date
-            lines.append(f"• {v.username} ({format_range(v.start_date, v.end_date)})")
+            name = await _resolve_member_name(interaction.guild, v)
+            lines.append(f"• {name} ({format_range(v.start_date, v.end_date)})")
 
         chunks = _chunk_lines(lines)
         for chunk in chunks:

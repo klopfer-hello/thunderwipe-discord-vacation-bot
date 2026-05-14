@@ -176,6 +176,39 @@ class Database:
         await cur.close()
         return new_id
 
+    async def update_username_for_user(self, user_id: str, new_username: str) -> int:
+        """Refresh the cached display_name on all of a user's vacation rows.
+
+        Used by the officer query commands to keep stored names in sync with
+        the member's current Discord display_name. Returns the number of
+        rows actually updated (zero if the name is already current — the
+        ``username != ?`` filter avoids needless writes).
+        """
+        if self._postgres:
+            async with self._pg_pool.acquire() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE vacations
+                    SET username = $1
+                    WHERE user_id = $2 AND username <> $1
+                    """,
+                    new_username,
+                    user_id,
+                )
+            # result looks like "UPDATE 3"
+            try:
+                return int(result.rsplit(" ", 1)[-1])
+            except ValueError:
+                return 0
+        cur = await self._sqlite.execute(
+            "UPDATE vacations SET username = ? WHERE user_id = ? AND username <> ?",
+            (new_username, user_id, new_username),
+        )
+        await self._sqlite.commit()
+        n = cur.rowcount
+        await cur.close()
+        return n
+
     async def delete_vacation(self, vacation_id: int, user_id: str) -> bool:
         """Delete a vacation only if it belongs to `user_id`. Returns True if a row was removed."""
         if self._postgres:
