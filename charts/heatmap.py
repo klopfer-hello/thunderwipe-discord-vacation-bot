@@ -5,8 +5,9 @@ dark slate background, warm gold accents, soft borders.
 
 A 3x7 grid covering the current week + the next 2 weeks (21 days). Each row
 is a week (Mo-So), each cell shows the date and the absence count, colored
-from the group background (no one absent) through warm gold to deep red.
-Weekend columns are dimmed; today is outlined in the accent gold.
+via discrete buckets (steps of 5 absences — see ``BUCKET_BOUNDARIES``) so the
+visual jump matches the guild's intuition that a handful of absences is no
+concern, while many are. Today is outlined in the accent gold.
 
 The image is rendered at a near-square aspect ratio so Discord displays it
 larger in the channel (very wide strips are auto-shrunk by Discord).
@@ -21,9 +22,10 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no display required
 
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Rectangle
 
 DAYS_TO_SHOW = 21  # current week + 2 more weeks
@@ -49,22 +51,37 @@ ACCENT_COLOR = _rgb(255, 183, 77)  # warm gold
 
 _WEEKDAY_LABELS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
-# Cell color: GROUP_BG -> warm gold -> deep red, on the dark background.
-_CMAP = LinearSegmentedColormap.from_list(
-    "absence_dark",
-    [GROUP_BG, _rgb(120, 90, 50), ACCENT_COLOR, _rgb(230, 110, 60), _rgb(196, 31, 59)],
-    N=256,
-)
+# Discrete buckets, in steps of 5 absences. The guild has ~100 members, so a
+# handful of people on vacation is no big deal; the colour scale is calibrated
+# to reflect that intuition rather than panicking at the first absence.
+#
+#   0-4   : background (no concern)
+#   5-9   : muted green (mild)
+#   10-14 : olive amber (worth noticing)
+#   15-19 : orange (concerning)
+#   20-24 : red (high)
+#   25+   : deep red (critical)
+#
+# All non-background colours are dark enough that the white in-cell text stays
+# readable; a soft black outline (via path_effects) handles the lighter shades.
+BUCKET_BOUNDARIES = [0, 5, 10, 15, 20, 25, float("inf")]
+BUCKET_COLORS = [
+    GROUP_BG,            # 0-4
+    _rgb(60, 95, 65),    # 5-9
+    _rgb(125, 100, 35),  # 10-14
+    _rgb(170, 90, 35),   # 15-19
+    _rgb(170, 50, 50),   # 20-24
+    _rgb(115, 25, 40),   # 25+
+]
+_CMAP = ListedColormap(BUCKET_COLORS, name="absence_buckets")
+_NORM = BoundaryNorm(BUCKET_BOUNDARIES, _CMAP.N)
 
-
-def _color_scale_max(counts: np.ndarray) -> float:
-    """How many absences map to the darkest red?
-
-    ``max(8, observed_max)`` keeps the gradient meaningful even when the
-    dataset is small — a single vacation won't paint the whole grid red.
-    """
-    observed = float(counts.max()) if counts.size else 0.0
-    return max(8.0, observed)
+# Subtle black outline around in-cell text so it stays legible on every
+# bucket colour without having to flip between light and dark text fills.
+_TEXT_OUTLINE = [
+    path_effects.Stroke(linewidth=2.2, foreground=(0, 0, 0, 0.7)),
+    path_effects.Normal(),
+]
 
 
 def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
@@ -80,7 +97,6 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
     start = today - timedelta(days=today.weekday())  # Monday of this week
     days = [start + timedelta(days=i) for i in range(DAYS_TO_SHOW)]
     counts = np.array([absence_counts.get(d, 0) for d in days], dtype=float)
-    vmax = _color_scale_max(counts)
 
     # Reshape into 3 weeks (rows) × 7 weekdays (columns).
     # Row 0 = top = current week.
@@ -95,8 +111,7 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
     ax.imshow(
         grid,
         cmap=_CMAP,
-        vmin=0,
-        vmax=vmax,
+        norm=_NORM,
         aspect="auto",
         origin="upper",
         extent=(-0.5, DAYS_PER_WEEK - 0.5, WEEKS - 0.5, -0.5),
@@ -108,18 +123,6 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
         for c in range(DAYS_PER_WEEK):
             day = days_grid[r, c]
             count = int(grid[r, c])
-
-            if day.weekday() >= 5:  # Sa/So
-                ax.add_patch(
-                    Rectangle(
-                        (c - 0.5, r - 0.5),
-                        1,
-                        1,
-                        facecolor=(0.0, 0.0, 0.0, 0.35),
-                        edgecolor="none",
-                        zorder=2,
-                    )
-                )
 
             if day == today:
                 ax.add_patch(
@@ -134,24 +137,25 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
                     )
                 )
 
-            intensity = count / vmax if vmax else 0
-            primary_text = TEXT_COLOR if intensity < 0.55 else (0.1, 0.08, 0.08)
-            secondary_text = SUBTEXT_COLOR if intensity < 0.55 else (0.15, 0.12, 0.12)
+            # Uniform light text fills with a subtle dark outline (path_effects)
+            # so both the date label and the count stay legible against every
+            # bucket colour — no more flipping to dark text on lighter cells.
 
             # Date in the upper-left of the cell (small, secondary).
-            ax.text(
+            date_label = ax.text(
                 c - 0.42,
                 r - 0.38,
                 day.strftime("%d.%m."),
                 ha="left",
                 va="top",
                 fontsize=9,
-                color=secondary_text,
+                color=SUBTEXT_COLOR,
                 zorder=5,
             )
+            date_label.set_path_effects(_TEXT_OUTLINE)
 
             # Count, large, centered.
-            ax.text(
+            count_text = ax.text(
                 c,
                 r + 0.08,
                 str(count),
@@ -159,9 +163,10 @@ def generate_heatmap(absence_counts: dict[date, int]) -> io.BytesIO:
                 va="center",
                 fontsize=26,
                 fontweight="bold",
-                color=primary_text,
+                color=TEXT_COLOR,
                 zorder=5,
             )
+            count_text.set_path_effects(_TEXT_OUTLINE)
 
     # ----- Column headers (weekday names, German) along the top
     ax.set_xticks(range(DAYS_PER_WEEK))
