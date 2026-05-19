@@ -1,6 +1,6 @@
 [project]
 name = "thunderwipe-discord-vacation-bot"
-version = "0.2.0"
+version = "0.5.0"
 description = "Discord bot that tracks WoW guild member vacations with an auto-updating heatmap"
 license = "MIT"
 requires-python = ">=3.11"
