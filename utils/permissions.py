@@ -19,6 +19,15 @@ def moderation_roles() -> set[str]:
     return {part.strip() for part in raw.split(",") if part.strip()}
 
 
+def member_is_moderator(user: discord.abc.User) -> bool:
+    """True if the user carries any configured moderator role, or no role is configured."""
+    required = moderation_roles()
+    if not required:
+        return True
+    role_names = {r.name for r in getattr(user, "roles", [])}
+    return bool(role_names & required)
+
+
 def _format_required_roles(roles: set[str]) -> str:
     ordered = sorted(roles)
     if len(ordered) == 1:
@@ -37,18 +46,12 @@ def is_moderator():
     """
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        required = moderation_roles()
-        if not required:
-            return True  # open access — no moderator role configured
-
-        member = interaction.user
-        member_role_names = {r.name for r in getattr(member, "roles", [])}
-        if member_role_names & required:
+        if member_is_moderator(interaction.user):
             return True
 
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                f"❌ Du brauchst {_format_required_roles(required)} für diesen Befehl.",
+                f"❌ Du brauchst {_format_required_roles(moderation_roles())} für diesen Befehl.",
                 ephemeral=True,
             )
         return False

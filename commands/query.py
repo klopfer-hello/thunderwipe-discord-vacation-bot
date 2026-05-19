@@ -1,4 +1,4 @@
-"""Moderator-only query commands."""
+"""Query commands — moderator listings plus self-service views."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from db import Vacation, db
 from utils.date_parser import DateParseError, format_date, format_range, parse_date
-from utils.permissions import is_moderator
+from utils.permissions import is_moderator, member_is_moderator
 
 log = logging.getLogger(__name__)
 
@@ -111,10 +111,9 @@ class QueryCog(commands.Cog):
 
     @app_commands.command(
         name="urlaube_anzeigen",
-        description="Officer: Alle Urlaube in den nächsten N Tagen anzeigen.",
+        description="Urlaube in den nächsten N Tagen anzeigen (Nicht-Moderatoren sehen nur ihre eigenen).",
     )
     @app_commands.describe(tage="Wie viele Tage in die Zukunft (Standard: 30)")
-    @is_moderator()
     async def urlaube_anzeigen(
         self,
         interaction: discord.Interaction,
@@ -124,21 +123,30 @@ class QueryCog(commands.Cog):
 
         today = date.today()
         end = today + timedelta(days=tage - 1)
+        is_mod = member_is_moderator(interaction.user)
         vacations = await db.get_vacations_in_range(today, end)
+        if not is_mod:
+            user_id = str(interaction.user.id)
+            vacations = [v for v in vacations if v.user_id == user_id]
 
         if not vacations:
-            await interaction.followup.send(
-                f"Keine Urlaube in den nächsten **{tage}** Tagen eingetragen.",
-                ephemeral=True,
+            empty = (
+                f"Keine Urlaube in den nächsten **{tage}** Tagen eingetragen."
+                if is_mod
+                else f"Du hast keine Urlaube in den nächsten **{tage}** Tagen eingetragen."
             )
+            await interaction.followup.send(empty, ephemeral=True)
             return
 
         # Group by start_date for readable output
-        lines = [
+        header = (
             f"📅 **Urlaube vom {format_date(today)} bis {format_date(end)}** "
-            f"({len(vacations)} Einträge):",
-            "",
-        ]
+            f"({len(vacations)} Einträge):"
+            if is_mod
+            else f"📅 **Deine Urlaube vom {format_date(today)} bis {format_date(end)}** "
+            f"({len(vacations)} Einträge):"
+        )
+        lines = [header, ""]
         current_start: date | None = None
         for v in vacations:
             if v.start_date != current_start:
@@ -146,8 +154,38 @@ class QueryCog(commands.Cog):
                     lines.append("")
                 lines.append(f"**{format_date(v.start_date)}**")
                 current_start = v.start_date
-            name = await _resolve_member_name(interaction.guild, v)
+            name = (
+                await _resolve_member_name(interaction.guild, v)
+                if is_mod
+                else v.username
+            )
             lines.append(f"• {name} ({format_range(v.start_date, v.end_date)})")
+
+        chunks = _chunk_lines(lines)
+        for chunk in chunks:
+            await interaction.followup.send(chunk, ephemeral=True)
+
+    # -------------------------------------------------------------- /meine_urlaube
+
+    @app_commands.command(
+        name="meine_urlaube",
+        description="Zeige deine eigenen anstehenden Urlaube.",
+    )
+    async def meine_urlaube(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        user_id = str(interaction.user.id)
+        vacations = await db.get_upcoming_vacations_for_user(user_id)
+
+        if not vacations:
+            await interaction.followup.send(
+                "Du hast keine eingetragenen Urlaube.", ephemeral=True
+            )
+            return
+
+        lines = [f"📅 **Deine Urlaube** ({len(vacations)} Einträge):", ""]
+        for v in vacations:
+            lines.append(f"• {format_range(v.start_date, v.end_date)}")
 
         chunks = _chunk_lines(lines)
         for chunk in chunks:
